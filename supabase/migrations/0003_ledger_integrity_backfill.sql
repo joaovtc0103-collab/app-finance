@@ -53,6 +53,13 @@ begin
 end;
 $$;
 
+
+-- Normalize trigger declaration for PostgreSQL event syntax.
+drop trigger if exists financial_transaction_ledger_after_write on public.financial_transactions;
+create trigger financial_transaction_ledger_after_write
+after insert or update on public.financial_transactions
+for each row execute function public.apply_transaction_to_ledger();
+
 -- Existing posted income/expense/adjustment rows are migrated into the ledger once.
 insert into public.ledger_entries(owner_id, transaction_id, account_id, entry_type, amount, entry_role, occurred_at)
 select t.owner_id, t.id, t.account_id,

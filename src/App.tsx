@@ -4,6 +4,8 @@ import type { Session } from '@supabase/supabase-js'
 import { ArrowDownLeft, ArrowUpRight, Banknote, Bell, CalendarDays, ChartNoAxesCombined, CircleHelp, CreditCard, LayoutDashboard, LogOut, Plus, Receipt, Settings, ShieldCheck, Wallet } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from './lib/supabase'
 
+type Account = { id: string; name: string; current_balance: number }
+
 type Transaction = {
   id: string
   description: string
@@ -25,6 +27,8 @@ export default function App() {
   const [password, setPassword] = useState('')
   const [authMessage, setAuthMessage] = useState('')
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
+  const [accountId, setAccountId] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
@@ -45,6 +49,9 @@ export default function App() {
   useEffect(() => {
     if (!session || !supabase) { setTransactions([]); return }
     let active = true
+    supabase.from('account_balances').select('account_id, name, current_balance').eq('is_active', true).then(({ data }) => {
+      if (active) { const rows = (data ?? []) as Account[]; setAccounts(rows); if (!accountId && rows[0]) setAccountId(rows[0].account_id) }
+    })
     supabase.from('financial_transactions')
       .select('id, description, amount, kind, occurred_at, status, category:categories(name), account:financial_accounts(name)')
       .order('occurred_at', { ascending: false }).limit(8)
@@ -54,7 +61,7 @@ export default function App() {
         else setTransactions((data ?? []) as unknown as Transaction[])
       })
     return () => { active = false }
-  }, [session])
+  }, [session, accountId])
 
   const totals = useMemo(() => transactions.reduce((acc, item) => {
     if (item.status === 'posted') acc[item.kind] += Number(item.amount)
@@ -79,6 +86,7 @@ export default function App() {
   async function addTransaction(event: FormEvent) {
     event.preventDefault()
     if (!supabase || !session?.user) return
+    if (!accountId) { setError('Crie ou selecione uma conta antes de registrar uma movimentação.'); return }
     const parsed = Number(amount.replace(',', '.'))
     if (!description.trim() || !Number.isFinite(parsed) || parsed <= 0) {
       setError('Informe uma descrição e um valor maior que zero.')
@@ -87,6 +95,7 @@ export default function App() {
     setSaving(true); setError('')
     const { error: insertError } = await supabase.from('financial_transactions').insert({
       owner_id: session.user.id,
+      account_id: accountId,
       description: description.trim(),
       amount: parsed.toFixed(2),
       kind,
@@ -152,11 +161,11 @@ export default function App() {
       <main className="main-area">
         <header className="topbar"><div><span className="breadcrumb">Workspace pessoal</span><span className="topbar-separator">/</span><b>Dashboard</b></div><div className="top-actions"><button className="icon-button" aria-label="Notificações"><Bell size={18}/></button><div className="avatar">{session.user.email?.slice(0,1).toUpperCase()}</div><button className="icon-button" aria-label="Sair" onClick={() => supabase?.auth.signOut()}><LogOut size={18}/></button></div></header>
         <div className="content">
-          <div className="page-heading"><div><p className="eyebrow">SEXTA-FEIRA FINANCEIRA</p><h1>Visão geral</h1><p className="muted">Acompanhe o que acontece com seu dinheiro.</p></div><button className="primary-button add-button" onClick={() => setShowForm(true)}><Plus size={18}/>Nova movimentação</button></div>
+          <div className="page-heading"><div><p className="eyebrow">SEXTA-FEIRA FINANCEIRA</p><h1>Visão geral</h1><p className="muted">Acompanhe o que acontece com seu dinheiro.</p></div><div className="heading-actions"><button className="subtle-button" onClick={async () => { const name = window.prompt('Nome da nova conta'); if (!name?.trim() || !supabase || !session?.user) return; const { data, error: accountError } = await supabase.from('financial_accounts').insert({ owner_id: session.user.id, name: name.trim(), account_type: 'checking', opening_balance: 0 }).select('id, name').single(); if (accountError) setError(accountError.message); else if (data) { setAccounts(current => [...current, { ...data, current_balance: 0 }]); setAccountId(data.id) } }}>Criar conta</button><button className="primary-button add-button" onClick={() => setShowForm(true)}><Plus size={18}/>Nova movimentação</button></div></div>
           {error && <div className="error-banner">{error}</div>}
-          {showForm && <form className="transaction-form" onSubmit={addTransaction}><div className="form-heading"><h3>Nova movimentação</h3><button type="button" className="text-button" onClick={() => setShowForm(false)}>Fechar</button></div><div className="form-grid"><label>Tipo<select value={kind} onChange={e => setKind(e.target.value as 'income'|'expense')}><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Valor (R$)<input required value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" inputMode="decimal"/></label><label className="wide-field">Descrição<input required value={description} onChange={e => setDescription(e.target.value)} placeholder="Ex.: almoço, Uber, salário…"/></label></div><button className="primary-button" disabled={saving}>{saving ? 'Salvando…' : 'Salvar movimentação'}</button></form>}
+          {showForm && <form className="transaction-form" onSubmit={addTransaction}><div className="form-heading"><h3>Nova movimentação</h3><button type="button" className="text-button" onClick={() => setShowForm(false)}>Fechar</button></div><div className="form-grid"><label>Tipo<select value={kind} onChange={e => setKind(e.target.value as 'income'|'expense')}><option value="expense">Despesa</option><option value="income">Receita</option></select></label><label>Conta<select required value={accountId} onChange={e => setAccountId(e.target.value)}><option value=''>Selecione uma conta</option>{accounts.map(account => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label>Valor (R$)<input required value={amount} onChange={e => setAmount(e.target.value)} placeholder="0,00" inputMode="decimal"/></label><label className="wide-field">Descrição<input required value={description} onChange={e => setDescription(e.target.value)} placeholder="Ex.: almoço, Uber, salário…"/></label></div>{accounts.length === 0 && <p className="muted">Nenhuma conta cadastrada. Crie uma conta para começar.</p>}<button className="primary-button" disabled={saving || !accountId}>{saving ? 'Salvando…' : 'Salvar movimentação'}</button></form>}
           <section className="metric-grid">
-            <article className="metric-card balance-card"><div className="metric-top"><span>Saldo das movimentações recentes</span><span className="metric-icon"><Wallet size={18}/></span></div><strong>{money(totals.income - totals.expense)}</strong><small>Com base nos últimos 8 lançamentos</small><div className="balance-decoration"/></article>
+            <article className="metric-card balance-card"><div className="metric-top"><span>Saldo das movimentações recentes</span><span className="metric-icon"><Wallet size={18}/></span></div><strong>{money(accounts.reduce((sum, account) => sum + Number(account.current_balance), 0))}</strong><small>Saldo contábil das contas ativas</small><div className="balance-decoration"/></article>
             <article className="metric-card"><div className="metric-top"><span>Receitas recentes</span><span className="metric-icon green"><ArrowDownLeft size={18}/></span></div><strong>{money(totals.income)}</strong><small>Movimentações confirmadas</small></article>
             <article className="metric-card"><div className="metric-top"><span>Despesas recentes</span><span className="metric-icon red"><ArrowUpRight size={18}/></span></div><strong>{money(totals.expense)}</strong><small>Movimentações confirmadas</small></article>
           </section>

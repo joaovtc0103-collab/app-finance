@@ -49,7 +49,7 @@ export default function App() {
   useEffect(() => {
     if (!session || !supabase) { setTransactions([]); return }
     let active = true
-    supabase.from('account_balances').select('account_id, name, current_balance').eq('is_active', true).then(({ data }) => {
+    supabase.from('account_balances').select('account_id, name, current_balance').eq('is_active', true).eq('currency', 'BRL').then(({ data }) => {
       if (active) { const rows = (data ?? []) as Account[]; setAccounts(rows); if (!accountId && rows[0]) setAccountId(rows[0].account_id) }
     })
     supabase.from('financial_transactions')

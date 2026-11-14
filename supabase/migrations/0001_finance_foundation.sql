@@ -126,7 +126,8 @@ create trigger on_auth_user_created after insert on auth.users for each row exec
 
 create or replace function public.is_workspace_member(target_workspace uuid)
 returns boolean language sql stable security definer set search_path = public as $$
-  select exists(select 1 from public.workspace_members m where m.workspace_id = target_workspace and m.user_id = auth.uid());
+  select exists(select 1 from public.shared_workspaces w where w.id = target_workspace and w.owner_id = auth.uid())
+    or exists(select 1 from public.workspace_members m where m.workspace_id = target_workspace and m.user_id = auth.uid());
 $$;
 
 alter table public.profiles enable row level security;

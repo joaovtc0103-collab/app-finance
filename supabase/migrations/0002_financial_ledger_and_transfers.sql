@@ -137,7 +137,7 @@ $$;
 
 drop trigger if exists financial_transaction_ledger_after_write on public.financial_transactions;
 create trigger financial_transaction_ledger_after_write
-after insert or update of status, owner_id, amount, kind, account_id, occurred_at, transfer_id, adjustment_effect
+after insert or update
 on public.financial_transactions
 for each row execute function public.apply_transaction_to_ledger();
 

@@ -29,6 +29,7 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
   const [accountId, setAccountId] = useState('')
+  const [requestKey, setRequestKey] = useState(() => crypto.randomUUID())
   const [showForm, setShowForm] = useState(false)
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
@@ -95,6 +96,7 @@ export default function App() {
     setSaving(true); setError('')
     const { error: insertError } = await supabase.from('financial_transactions').insert({
       owner_id: session.user.id,
+      idempotency_key: requestKey,
       account_id: accountId,
       description: description.trim(),
       amount: parsed.toFixed(2),
@@ -106,7 +108,7 @@ export default function App() {
     })
     setSaving(false)
     if (insertError) { setError(insertError.message); return }
-    setDescription(''); setAmount(''); setShowForm(false)
+    setDescription(''); setAmount(''); setRequestKey(crypto.randomUUID()); setShowForm(false)
     const { data } = await supabase.from('financial_transactions')
       .select('id, description, amount, kind, occurred_at, status, category:categories(name), account:financial_accounts(name)')
       .order('occurred_at', { ascending: false }).limit(8)
